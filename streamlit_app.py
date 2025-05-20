@@ -194,13 +194,18 @@ with cols[0]:
                 st.balloons()
                 st.info("Unlocked:\n" + "\n".join(new.keys()))
 
-    # Load displayed streak from meta sheet
-    displayed = meta_sheet.acell('A2').value
+        # Load displayed streak from meta sheet (safe integer conversion)
+    displayed_raw = meta_sheet.acell('A2').value
+    try:
+        streak_val = int(displayed_raw)
+    except Exception:
+        streak_val = 0
     st.markdown(
-        f"<p style='font-size:24px;font-weight:bold;color:{THEME_COLOR}'>🔥 Current Streak: {displayed} day{'s' if int(displayed)!=1 else ''}</p>",
+        f"<p style='font-size:24px;font-weight:bold;color:{THEME_COLOR}'>"
+        f"🔥 Current Streak: {streak_val} day{'s' if streak_val != 1 else ''}</p>",
         unsafe_allow_html=True
     )
-    st.subheader('🏆 Achievements')
+    st.subheader('🏆 Achievements' )
     for k in ['First 50%', 'First 100%', 'Three Days Streak']:
         st.write(f"{'✅' if achievements.get(k) else '❌'} {k}")
 

@@ -31,9 +31,13 @@ def load_meta_sheet(client):
         meta = client.open(SHEET_NAME).worksheet(META_SHEET_NAME)
     except Exception:
         spreadsheet = client.open(SHEET_NAME)
-        meta = spreadsheet.add_worksheet(title=META_SHEET_NAME, rows=2, cols=2)
-        meta.update('A1', 'Streak')
-        meta.update('A2', 0)
+        meta = spreadsheet.add_worksheet(title=META_SHEET_NAME, rows=10, cols=2)
+        # initialize headers safely
+        try:
+            meta.update_cell(1, 1, 'Streak')
+            meta.update_cell(2, 1, 0)
+        except Exception:
+            pass
     return meta
 
 # ---- Load Data Sheet ----

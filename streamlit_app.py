@@ -126,11 +126,11 @@ with cols[0]:
     st.markdown(f"<p style='font-size:24px;color:{THEME_COLOR}'>🔥 Current Streak: {cs} day{'s' if cs!='1' else ''}</p>", unsafe_allow_html=True)
     st.subheader('🏆 Achievements')
     all_achievements = ['First 50%', 'First 100%', 'Three Days Streak']
-    unlocked = {rec['Achievement'] for rec in ach_ws.get_all_records() if 'Achievement' in rec and 'Unlocked' in rec}
+    ach_records = ach_ws.get_all_records()
+unlocked = {rec['Achievement']: rec['Unlocked'] for rec in ach_records if 'Achievement' in rec and 'Unlocked' in rec}
     for ach in all_achievements:
         if ach in unlocked:
-            date = next((rec['Unlocked'] for rec in ach_ws.get_all_records() if rec.get('Achievement') == ach), '')
-            st.write(f"✅ {ach} ({date})")
+            st.write(f"✅ {ach} ({unlocked[ach]})")
         else:
             st.write(f"❌ {ach}")
 

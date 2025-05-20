@@ -26,188 +26,137 @@ def get_gsheet_client():
     return gspread.authorize(creds)
 
 # ---- Load or Create Meta Sheet ----
-def load_meta_sheet(client):
+def load_meta_sheet(spreadsheet):
     try:
-        meta = client.open(SHEET_NAME).worksheet(META_SHEET_NAME)
-    except Exception:
-        spreadsheet = client.open(SHEET_NAME)
-        meta = spreadsheet.add_worksheet(title=META_SHEET_NAME, rows=10, cols=2)
-        try:
-            meta.update_cell(1, 1, 'Streak')
-            meta.update_cell(2, 1, 0)
-        except Exception:
-            pass
-    return meta
+        return spreadsheet.worksheet(META_SHEET_NAME)
+    except gspread.exceptions.WorksheetNotFound:
+        meta = spreadsheet.add_worksheet(title=META_SHEET_NAME, rows=2, cols=2)
+        meta.update_cell(1, 1, 'Streak')
+        meta.update_cell(2, 1, 0)
+        return meta
 
 # ---- Load Data Sheet ----
-def load_sheet(task_names):
+def load_sheets(task_names):
     client = get_gsheet_client()
     try:
         spreadsheet = client.open(SHEET_NAME)
-        sheet = spreadsheet.sheet1
-    except Exception:
+    except gspread.exceptions.SpreadsheetNotFound:
         spreadsheet = client.create(SHEET_NAME)
-        sheet = spreadsheet.sheet1
-        sheet.append_row(['Date'] + task_names + ['Score'])
-    try:
-        records = sheet.get_all_records()
-    except Exception:
-        records = []
+    # Data sheet
+    sheet = spreadsheet.sheet1
+    header = ['Date'] + task_names + ['Score']
+    # ensure header
+    existing = sheet.row_values(1)
+    if existing != header:
+        sheet.clear()
+        sheet.append_row(header)
+    # load data
+    records = sheet.get_all_records()
     df = pd.DataFrame(records)
     if df.empty or 'Date' not in df.columns:
-        df = pd.DataFrame(columns=['Date'] + task_names + ['Score'])
-    meta = load_meta_sheet(client)
+        df = pd.DataFrame(columns=header)
+    # Meta sheet
+    meta = load_meta_sheet(spreadsheet)
     return df, sheet, meta
 
-# ---- Data Loading & Persistence ----
+# ---- Load Tasks & Achievements ----
 def load_tasks():
     if st.secrets.get('tasks_json'):
         return st.secrets['tasks_json']
     try:
-        with open(CONFIG_FILE, 'r') as f:
+        with open(CONFIG_FILE) as f:
             return json.load(f)
     except FileNotFoundError:
-        return {
-            'Study': {'weight': 20, 'color': THEME_COLOR},
-            'Bible Reading': {'weight': 15, 'color': '#FF5722'},
-            'Skincare': {'weight': 10, 'color': '#9C27B0'},
-            'Haircare': {'weight': 10, 'color': '#03A9F4'},
-            'Sunscreen': {'weight': 10, 'color': '#FFC107'},
-            'Exercise': {'weight': 10, 'color': '#E91E63'},
-            'Hydration': {'weight': 10, 'color': '#2196F3'},
-            'Meditation': {'weight': 5,  'color': '#8BC34A'},
-            'Journaling': {'weight': 5,  'color': '#FF9800'},
-            'Sleep Hygiene': {'weight': 5,  'color': '#607D8B'}
-        }
+        return {}
 
 def load_achievements():
     if os.path.exists(ACHIEVEMENTS_FILE):
-        with open(ACHIEVEMENTS_FILE, 'r') as f:
+        with open(ACHIEVEMENTS_FILE) as f:
             return json.load(f)
     return {}
 
-def save_achievements(achievements):
+def save_achievements(a):
     with open(ACHIEVEMENTS_FILE, 'w') as f:
-        json.dump(achievements, f, indent=4)
+        json.dump(a, f, indent=4)
 
 # ---- Streak & Achievements ----
-def has_n_day_streak(df, n, min_score=1):
-    if df.empty:
-        return False
-    df['Date'] = pd.to_datetime(df['Date'])
+def has_n_day_streak(df, n):
+    if df.empty: return False
+    df['Date']=pd.to_datetime(df['Date'])
     daily = df.groupby('Date').Score.max().reset_index()
-    today = pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
-    days = set(today - pd.Timedelta(days=i) for i in range(n))
-    good = set(daily[daily.Score >= min_score].Date.dt.normalize())
-    return days.issubset(good)
+    today=pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
+    return all((today-pd.Timedelta(days=i)) in set(daily.Date.dt.normalize()) for i in range(n))
 
-def get_current_streak(df, min_score=1):
-    if df.empty:
-        return 0
-    df['Date'] = pd.to_datetime(df['Date'])
-    daily = df.groupby('Date').Score.max().reset_index().sort_values('Date', ascending=False)
-    streak = 0
-    today = pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
-    for _, row in daily.iterrows():
-        if row['Date'].normalize() == today - pd.Timedelta(days=streak) and row['Score'] >= min_score:
-            streak += 1
-        else:
-            break
+def get_current_streak(df):
+    if df.empty: return 0
+    df['Date']=pd.to_datetime(df['Date'])
+    daily=df.groupby('Date').Score.max().reset_index().sort_values('Date',ascending=False)
+    streak=0; today=pd.to_datetime(datetime.now().strftime('%Y-%m-%d'))
+    for _,row in daily.iterrows():
+        if row.Date.normalize()==today-pd.Timedelta(days=streak): streak+=1
+        else: break
     return streak
 
-def check_achievements(score, achievements, df):
-    new = {}
-    conds = {
-        'First 50%': lambda s: s >= 50,
-        'First 100%': lambda s: s == 100,
-        'Three Days Streak': lambda s: has_n_day_streak(df, 3)
-    }
-    for k, cond in conds.items():
-        if k not in achievements and cond(score):
-            achievements[k] = True
-            new[k] = True
+def check_achievements(score,a,df):
+    new={}
+    for k,cond in [('First 50%',score>=50),('First 100%',score==100),('Three Days Streak',has_n_day_streak(df,3))]:
+        if cond and k not in a: a[k]=True; new[k]=True
     return new
 
 # ---- Plotting ----
 def plot_score(df):
-    df['Date'] = pd.to_datetime(df['Date'])
-    df = df.sort_values('Date')
-    fig, ax = plt.subplots(facecolor=BG_COLOR)
-    ax.set_facecolor(BG_COLOR)
-    ax.plot(df['Date'], df['Score'], marker='o', color=THEME_COLOR)
+    df['Date']=pd.to_datetime(df['Date'])
+    df=df.sort_values('Date')
+    fig,ax=plt.subplots(facecolor=BG_COLOR); ax.set_facecolor(BG_COLOR)
+    ax.plot(df['Date'],df['Score'],marker='o',color=THEME_COLOR)
     if not df.empty:
-        start = df['Date'].min() - pd.Timedelta(days=1)
-        end = df['Date'].max() + pd.Timedelta(days=1)
-        ax.set_xlim(start, end)
-    ax.set_ylim(0, 100)
-    locator = mdates.DayLocator()
-    formatter = mdates.DateFormatter('%b %d')
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
+        ax.set_xlim(df.Date.min()-pd.Timedelta(days=1),df.Date.max()+pd.Timedelta(days=1))
+    ax.set_ylim(0,100)
+    ax.xaxis.set_major_locator(mdates.DayLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %d'))
     fig.autofmt_xdate()
-    ax.set_title('Score Over Time', color=THEME_COLOR)
-    ax.set_xlabel('Date', color=TEXT_COLOR)
-    ax.set_ylabel('Score', color=TEXT_COLOR)
-    ax.tick_params(colors=TEXT_COLOR)
-    ax.grid(True, color=GRID_COLOR)
+    ax.set_title('Score Over Time',color=THEME_COLOR)
+    ax.set_xlabel('Date',color=TEXT_COLOR); ax.set_ylabel('Score',color=TEXT_COLOR)
+    ax.tick_params(colors=TEXT_COLOR); ax.grid(True,color=GRID_COLOR)
     return fig
 
-# ---- Streamlit UI ----
-st.set_page_config(page_title='Perfect Day Tracker', layout='wide')
-st.markdown(f"<style>body{{background-color:{BG_COLOR};color:{TEXT_COLOR}}}</style>", unsafe_allow_html=True)
-st.title("🌟 My Perfect Day Tracker")
+# ---- App ----
+st.set_page_config(page_title='Perfect Day Tracker',layout='wide')
+st.markdown(f"<style>body{{background-color:{BG_COLOR};color:{TEXT_COLOR}}}</style>",unsafe_allow_html=True)
+st.title('🌟 My Perfect Day Tracker')
 
-# Load tasks and sheets
-tasks = load_tasks()
-task_names = list(tasks.keys())
-df_all, sheet, meta_sheet = load_sheet(task_names)
-achievements = load_achievements()
+tasks=load_tasks(); names=list(tasks.keys())
+df_all,sheet,meta=load_sheets(names); ach=load_achievements()
 
-# Layout
-cols = st.columns([1, 2], gap='large')
-
+cols=st.columns([1,2],gap='large')
 with cols[0]:
     st.subheader('📝 Daily Checklist')
-    with st.form('daily_form'):
-        entry = {t: st.checkbox(f"{t} ({tasks[t]['weight']}%)") for t in task_names}
+    with st.form('f'):
+        entry={t:st.checkbox(f"{t} ({tasks[t]['weight']}%)") for t in names}
         if st.form_submit_button('✅ Submit Day'):
-            date = datetime.now().strftime('%Y-%m-%d')
-            score = sum(tasks[t]['weight'] for t, done in entry.items() if done)
-            row = [date] + [int(entry[t]) for t in task_names] + [score]
-            existing_dates = df_all['Date'].astype(str).tolist()
-            if date in existing_dates:
-                idx = existing_dates.index(date)
-                # update data row via sheet.update_cell per column
-                for col_idx, val in enumerate(row, start=1):
-                    sheet.update_cell(idx+2, col_idx, val)
-                df_all.loc[idx] = row
+            date=datetime.now().strftime('%Y-%m-%d')
+            score=sum(tasks[t]['weight'] for t,d in entry.items() if d)
+            row=[date]+[int(entry[t]) for t in names]+[score]
+            if date in df_all.Date.astype(str).tolist():
+                df_all.loc[df_all.Date.astype(str)==date]=row
             else:
-                sheet.append_row(row)
-                df_all.loc[len(df_all)] = row
-            new = check_achievements(score, achievements, df_all)
-            save_achievements(achievements)
-            streak = get_current_streak(df_all)
-            meta_sheet.update_cell(2, 1, streak)
+                df_all.loc[len(df_all)]=row
+            # rewrite sheet
+            sheet.clear()
+            sheet.append_row(['Date']+names+['Score'])
+            sheet.append_rows(df_all.values.tolist())
+            new=check_achievements(score,ach,df_all)
+            save_achievements(ach)
+            streak=get_current_streak(df_all)
+            meta.clear(); meta.update_cell(1,1,'Streak'); meta.update_cell(2,1,streak)
             st.success(f"Your Score: {score}%")
-            if new:
-                st.balloons()
-                st.info("Unlocked:\n" + "\n".join(new.keys()))
-
-    displayed_raw = meta_sheet.acell('A2').value
-    try:
-        streak_val = int(displayed_raw)
-    except Exception:
-        streak_val = 0
-    st.markdown(
-        f"<p style='font-size:24px;font-weight:bold;color:{THEME_COLOR}'>"
-        f"🔥 Current Streak: {streak_val} day{'s' if streak_val != 1 else ''}</p>",
-        unsafe_allow_html=True
-    )
+            if new: st.balloons(); st.info('Unlocked:\n'+"\n".join(new.keys()))
+    # display streak
+    raw=meta.acell('A2').value
+    try: sv=int(raw)
+    except: sv=0
+    st.markdown(f"<p style='font-size:24px;color:{THEME_COLOR}'>🔥 Current Streak: {sv} day{'s' if sv!=1 else ''}</p>",unsafe_allow_html=True)
     st.subheader('🏆 Achievements')
-    for k in ['First 50%', 'First 100%', 'Three Days Streak']:
-        st.write(f"{'✅' if achievements.get(k) else '❌'} {k}")
-
+    for k in ['First 50%','First 100%','Three Days Streak']: st.write(f"{'✅' if ach.get(k) else '❌'} {k}")
 with cols[1]:
-    if not df_all.empty:
-        st.subheader('📈 Score Over Time')
-        st.pyplot(plot_score(df_all))
+    if not df_all.empty: st.subheader('📈 Score Over Time'); st.pyplot(plot_score(df_all))

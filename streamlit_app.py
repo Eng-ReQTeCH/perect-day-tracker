@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import json
 from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -33,7 +34,8 @@ def ensure_ws(spreadsheet, title, headers):
         ws.append_row(headers)
     return ws
 
-# ---- Load Sheets ----ndef load_sheets():
+# ---- Load Sheets ----
+def load_sheets():():
     client = get_gsheet_client()
     try:
         spreadsheet = client.open(SHEET_NAME)

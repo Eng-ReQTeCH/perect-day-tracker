@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-from datetime import datetime\ nimport matplotlib.pyplot as plt
+from datetime import datetime
+import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -61,11 +62,13 @@ def load_tasks():
             'Sleep Hygiene': {'weight': 5,  'color': '#607D8B'}
         }
 
+
 def load_achievements():
     if os.path.exists(ACHIEVEMENTS_FILE):
         with open(ACHIEVEMENTS_FILE, 'r') as f:
             return json.load(f)
     return {}
+
 
 def save_achievements(achievements):
     with open(ACHIEVEMENTS_FILE, 'w') as f:
@@ -82,6 +85,7 @@ def has_n_day_streak(df, n, min_score=1):
     good = set(daily[daily.Score >= min_score].Date.dt.normalize())
     return days.issubset(good)
 
+
 def get_current_streak(df, min_score=1):
     if df.empty:
         return 0
@@ -95,6 +99,7 @@ def get_current_streak(df, min_score=1):
         else:
             break
     return streak
+
 
 def check_achievements(score, achievements, df):
     new = {}
@@ -155,7 +160,6 @@ with cols[0]:
         entry = {t: st.checkbox(f"{t} ({tasks[t]['weight']}%)") for t in task_names}
         if st.form_submit_button('✅ Submit Day'):
             date = datetime.now().strftime('%Y-%m-%d')
-            # Prevent multiple entries per day
             if date in df_all['Date'].astype(str).tolist():
                 st.warning("You've already submitted your perfect day today.")
             else:

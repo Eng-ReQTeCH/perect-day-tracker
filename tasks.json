@@ -1,0 +1,42 @@
+{
+    "Study": {
+        "weight": 20,
+        "color": "#1DB954"
+    },
+    "Bible Reading": {
+        "weight": 15,
+        "color": "#FF5722"
+    },
+    "Skincare": {
+        "weight": 10,
+        "color": "#9C27B0"
+    },
+    "Haircare": {
+        "weight": 10,
+        "color": "#03A9F4"
+    },
+    "Sunscreen": {
+        "weight": 10,
+        "color": "#FFC107"
+    },
+    "Exercise": {
+        "weight": 10,
+        "color": "#E91E63"
+    },
+    "Hydration": {
+        "weight": 10,
+        "color": "#2196F3"
+    },
+    "Meditation": {
+        "weight": 5,
+        "color": "#8BC34A"
+    },
+    "Journaling": {
+        "weight": 5,
+        "color": "#FF9800"
+    },
+    "Sleep Hygiene": {
+        "weight": 5,
+        "color": "#607D8B"
+    }
+}

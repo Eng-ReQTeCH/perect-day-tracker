@@ -128,7 +128,7 @@ with cols[0]:
     all_achievements = ['First 50%', 'First 100%', 'Three Days Streak']
     ach_records = ach_ws.get_all_records()
 unlocked = {rec['Achievement']: rec['Unlocked'] for rec in ach_records if 'Achievement' in rec and 'Unlocked' in rec}
-    for ach in all_achievements:
+for ach in all_achievements:
         if ach in unlocked:
             st.write(f"✅ {ach} ({unlocked[ach]})")
         else:

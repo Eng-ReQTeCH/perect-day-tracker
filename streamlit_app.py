@@ -11,6 +11,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ---- Configuration ----
 CONFIG_FILE = "tasks.json"
 SHEET_NAME = "Perfect Day Log"
+META_SHEET_NAME = "Meta"
 ACHIEVEMENTS_FILE = "achievements.json"
 THEME_COLOR = "#1DB954"
 BG_COLOR = '#121212'
@@ -24,13 +25,27 @@ def get_gsheet_client():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
     return gspread.authorize(creds)
 
-# ---- Load Sheet ----
+# ---- Load or Create Meta Sheet ----
+def load_meta_sheet(client):
+    try:
+        meta = client.open(SHEET_NAME).worksheet(META_SHEET_NAME)
+    except Exception:
+        spreadsheet = client.open(SHEET_NAME)
+        meta = spreadsheet.add_worksheet(title=META_SHEET_NAME, rows=2, cols=2)
+        meta.update('A1', 'Streak')
+        meta.update('A2', 0)
+    return meta
+
+# ---- Load Data Sheet ----
 def load_sheet(task_names):
     client = get_gsheet_client()
+    spreadsheet = None
     try:
-        sheet = client.open(SHEET_NAME).sheet1
+        spreadsheet = client.open(SHEET_NAME)
+        sheet = spreadsheet.sheet1
     except Exception:
-        sheet = client.create(SHEET_NAME).sheet1
+        spreadsheet = client.create(SHEET_NAME)
+        sheet = spreadsheet.sheet1
         sheet.append_row(['Date'] + task_names + ['Score'])
     try:
         records = sheet.get_all_records()
@@ -39,7 +54,8 @@ def load_sheet(task_names):
     df = pd.DataFrame(records)
     if df.empty or 'Date' not in df.columns:
         df = pd.DataFrame(columns=['Date'] + task_names + ['Score'])
-    return df, sheet
+    meta = load_meta_sheet(client)
+    return df, sheet, meta
 
 # ---- Data Loading & Persistence ----
 def load_tasks():
@@ -62,13 +78,11 @@ def load_tasks():
             'Sleep Hygiene': {'weight': 5,  'color': '#607D8B'}
         }
 
-
 def load_achievements():
     if os.path.exists(ACHIEVEMENTS_FILE):
         with open(ACHIEVEMENTS_FILE, 'r') as f:
             return json.load(f)
     return {}
-
 
 def save_achievements(achievements):
     with open(ACHIEVEMENTS_FILE, 'w') as f:
@@ -85,7 +99,6 @@ def has_n_day_streak(df, n, min_score=1):
     good = set(daily[daily.Score >= min_score].Date.dt.normalize())
     return days.issubset(good)
 
-
 def get_current_streak(df, min_score=1):
     if df.empty:
         return 0
@@ -99,7 +112,6 @@ def get_current_streak(df, min_score=1):
         else:
             break
     return streak
-
 
 def check_achievements(score, achievements, df):
     new = {}
@@ -143,12 +155,10 @@ st.set_page_config(page_title='Perfect Day Tracker', layout='wide')
 st.markdown(f"<style>body{{background-color:{BG_COLOR};color:{TEXT_COLOR}}}</style>", unsafe_allow_html=True)
 st.title("🌟 My Perfect Day Tracker")
 
-# Load tasks
+# Load tasks and sheets
 tasks = load_tasks()
 task_names = list(tasks.keys())
-
-# Load sheet
-df_all, sheet = load_sheet(task_names)
+df_all, sheet, meta_sheet = load_sheet(task_names)
 achievements = load_achievements()
 
 # Layout
@@ -160,23 +170,30 @@ with cols[0]:
         entry = {t: st.checkbox(f"{t} ({tasks[t]['weight']}%)") for t in task_names}
         if st.form_submit_button('✅ Submit Day'):
             date = datetime.now().strftime('%Y-%m-%d')
-            if date in df_all['Date'].astype(str).tolist():
-                st.warning("You've already submitted your perfect day today.")
+            score = sum(tasks[t]['weight'] for t, done in entry.items() if done)
+            row = [date] + [int(entry[t]) for t in task_names] + [score]
+            # replace or append
+            existing_dates = df_all['Date'].astype(str).tolist()
+            if date in existing_dates:
+                idx = existing_dates.index(date)
+                sheet.update(f'A{idx+2}:{chr(65+len(task_names))}{idx+2}', [row])
+                df_all.loc[idx] = row
             else:
-                score = sum(tasks[t]['weight'] for t, done in entry.items() if done)
-                row = [date] + [int(entry[t]) for t in task_names] + [score]
                 sheet.append_row(row)
                 df_all.loc[len(df_all)] = row
-                new = check_achievements(score, achievements, df_all)
-                save_achievements(achievements)
-                st.success(f"Your Score: {score}%")
-                if new:
-                    st.balloons()
-                    st.info("Unlocked:\n" + "\n".join(new.keys()))
+            new = check_achievements(score, achievements, df_all)
+            save_achievements(achievements)
+            streak = get_current_streak(df_all)
+            meta_sheet.update('A2', streak)
+            st.success(f"Your Score: {score}%")
+            if new:
+                st.balloons()
+                st.info("Unlocked:\n" + "\n".join(new.keys()))
 
-    streak = get_current_streak(df_all)
+    # Load displayed streak from meta sheet
+    displayed = meta_sheet.acell('A2').value
     st.markdown(
-        f"<p style='font-size:24px;font-weight:bold;color:{THEME_COLOR}'>🔥 Current Streak: {streak} day{'s' if streak!=1 else ''}</p>",
+        f"<p style='font-size:24px;font-weight:bold;color:{THEME_COLOR}'>🔥 Current Streak: {displayed} day{'s' if int(displayed)!=1 else ''}</p>",
         unsafe_allow_html=True
     )
     st.subheader('🏆 Achievements')

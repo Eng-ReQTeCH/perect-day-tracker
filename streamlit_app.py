@@ -96,6 +96,7 @@ def get_current_streak(df, min_score=1):
             break
     return streak
 
+
 def check_achievements(score, achievements, df):
     new = {}
     conds = {
@@ -154,7 +155,8 @@ with cols[0]:
             date = datetime.now().strftime('%Y-%m-%d')
             row = [date] + [int(entry[t]) for t in task_names] + [score]
             sheet.append_row(row)
-            df_all = df_all.append(pd.Series(row, index=df_all.columns), ignore_index=True)
+            # Use .loc instead of deprecated append
+            df_all.loc[len(df_all)] = row
             new = check_achievements(score, achievements, df_all)
             save_achievements(achievements)
             st.success(f"Your Score: {score}%")

@@ -177,9 +177,9 @@ with cols[0]:
             existing_dates = df_all['Date'].astype(str).tolist()
             if date in existing_dates:
                 idx = existing_dates.index(date)
-                # update score row via update_cell per column
+                # update data row via sheet.update_cell per column
                 for col_idx, val in enumerate(row, start=1):
-                    meta_sheet.update_cell(idx+2, col_idx, val)
+                    sheet.update_cell(idx+2, col_idx, val)
                 df_all.loc[idx] = row
             else:
                 sheet.append_row(row)

@@ -24,23 +24,20 @@ def get_gsheet_client():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_json, scope)
     return gspread.authorize(creds)
 
-# Ensure header exists and load data
+# ---- Load Sheet ----
 def load_sheet(task_names):
     client = get_gsheet_client()
     try:
         sheet = client.open(SHEET_NAME).sheet1
-    except gspread.exceptions.SpreadsheetNotFound:
+    except Exception:
         sheet = client.create(SHEET_NAME).sheet1
-    header = ['Date'] + task_names + ['Score']
-    existing = sheet.row_values(1)
-    if existing != header:
-        if existing:
-            sheet.delete_rows(1)
-        sheet.insert_row(header, index=1)
+        # add header row on new sheet
+        sheet.append_row(['Date'] + task_names + ['Score'])
     records = sheet.get_all_records()
     df = pd.DataFrame(records)
-    if 'Date' not in df.columns:
-        df = pd.DataFrame(columns=header)
+    # if empty or missing columns, ensure structure
+    if df.empty or 'Date' not in df.columns:
+        df = pd.DataFrame(columns=['Date'] + task_names + ['Score'])
     return df, sheet
 
 # ---- Data Loading & Persistence ----
@@ -133,16 +130,15 @@ def plot_score(df):
     return fig
 
 # ---- Streamlit UI ----
-
 st.set_page_config(page_title='Perfect Day Tracker', layout='wide')
 st.markdown(f"<style>body{{background-color:{BG_COLOR};color:{TEXT_COLOR}}}</style>", unsafe_allow_html=True)
 st.title("🌟 My Perfect Day Tracker")
 
-# Load tasks and keep ordering consistent
+# Load tasks
 tasks = load_tasks()
 task_names = list(tasks.keys())
 
-# Load sheet & DataFrame
+# Load sheet
 df_all, sheet = load_sheet(task_names)
 achievements = load_achievements()
 
@@ -158,7 +154,7 @@ with cols[0]:
             date = datetime.now().strftime('%Y-%m-%d')
             row = [date] + [int(entry[t]) for t in task_names] + [score]
             sheet.append_row(row)
-            df_all.loc[len(df_all)] = row
+            df_all = df_all.append(pd.Series(row, index=df_all.columns), ignore_index=True)
             new = check_achievements(score, achievements, df_all)
             save_achievements(achievements)
             st.success(f"Your Score: {score}%")

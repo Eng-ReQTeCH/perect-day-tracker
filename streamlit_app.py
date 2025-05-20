@@ -8,10 +8,10 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ---- Configuration ----
-CONFIG_FILE = "tasks.json"
 SHEET_NAME = "Perfect Day Log"
 META_SHEET_NAME = "Meta"
 ACH_SHEET_NAME = "Achievements"
+OBJ_SHEET_NAME = "Objectives"
 THEME_COLOR = "#1DB954"
 BG_COLOR = '#121212'
 TEXT_COLOR = '#FFFFFF'
@@ -25,7 +25,7 @@ def get_gsheet_client():
     return gspread.authorize(creds)
 
 # ---- Ensure Worksheet ----
-def ensure_worksheet(spreadsheet, title, headers):
+def ensure_ws(spreadsheet, title, headers):
     try:
         ws = spreadsheet.worksheet(title)
     except gspread.exceptions.WorksheetNotFound:
@@ -33,33 +33,28 @@ def ensure_worksheet(spreadsheet, title, headers):
         ws.append_row(headers)
     return ws
 
-# ---- Load Sheets ----
-def load_sheets(task_names):
+# ---- Load Sheets ----ndef load_sheets():
     client = get_gsheet_client()
     try:
         spreadsheet = client.open(SHEET_NAME)
     except gspread.exceptions.SpreadsheetNotFound:
         spreadsheet = client.create(SHEET_NAME)
+    # Objectives sheet
+    obj_ws = ensure_ws(spreadsheet, OBJ_SHEET_NAME, ['Objective', 'Weight'])
+    obj_records = obj_ws.get_all_records()
+    tasks = {r['Objective']: int(r['Weight']) for r in obj_records}
     # Data sheet
     sheet = spreadsheet.sheet1
-    headers = ['Date'] + task_names + ['Score']
+    headers = ['Date'] + list(tasks.keys()) + ['Score']
     if sheet.row_values(1) != headers:
         sheet.clear(); sheet.append_row(headers)
     df = pd.DataFrame(sheet.get_all_records())
     if df.empty or 'Date' not in df.columns:
         df = pd.DataFrame(columns=headers)
     # Meta and Achievements
-    meta = ensure_worksheet(spreadsheet, META_SHEET_NAME, ['Streak'])
-    ach_ws = ensure_worksheet(spreadsheet, ACH_SHEET_NAME, ['Achievement', 'Unlocked'])
-    return df, sheet, meta, ach_ws
-
-# ---- Load Tasks ----
-def load_tasks():
-    try:
-        with open(CONFIG_FILE) as f:
-            return json.load(f)
-    except:
-        return {}
+    meta = ensure_ws(spreadsheet, META_SHEET_NAME, ['Streak'])
+    ach_ws = ensure_ws(spreadsheet, ACH_SHEET_NAME, ['Achievement', 'Unlocked'])
+    return tasks, df, sheet, meta, ach_ws
 
 # ---- Streak & Achievements ----
 def has_n_day_streak(df, n):
@@ -107,21 +102,18 @@ st.set_page_config(page_title='Perfect Day Tracker', layout='wide')
 st.markdown(f"<style>body{{background-color:{BG_COLOR};color:{TEXT_COLOR}}}</style>", unsafe_allow_html=True)
 st.title('🌟 My Perfect Day Tracker')
 
-tasks = load_tasks(); names = list(tasks.keys())
-df_all, sheet, meta, ach_ws = load_sheets(names)
-
+tasks, df_all, sheet, meta, ach_ws = load_sheets()
+names = list(tasks.keys())
 cols = st.columns([1,2], gap='large')
 with cols[0]:
     st.subheader('📝 Daily Checklist')
-    with st.form('form'):
-        entry = {t: st.checkbox(f"{t} ({tasks[t]['weight']}%)") for t in names}
+    with st.form('f'):
+        entry = {t: st.checkbox(f"{t} ({tasks[t]}%)") for t in names}
         if st.form_submit_button('✅ Submit Day'):
             date = datetime.now().strftime('%Y-%m-%d')
-            row = [date] + [int(entry[t]) for t in names] + [sum(tasks[t]['weight'] for t,done in entry.items() if done)]
-            if date in df_all['Date'].astype(str).tolist():
-                df_all.loc[df_all['Date'].astype(str)==date] = row
-            else:
-                df_all.loc[len(df_all)] = row
+            row = [date] + [int(entry[t]) for t in names] + [sum(tasks[t] for t,done in entry.items() if done)]
+            if date in df_all['Date'].astype(str).tolist(): df_all.loc[df_all['Date'].astype(str)==date] = row
+            else: df_all.loc[len(df_all)] = row
             sheet.clear(); sheet.append_row(['Date']+names+['Score']); sheet.append_rows(df_all.values.tolist())
             streak = get_current_streak(df_all)
             meta.clear(); meta.append_row(['Streak']); meta.append_row([streak])

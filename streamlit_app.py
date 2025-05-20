@@ -2,8 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 import os
-from datetime import datetime
-import matplotlib.pyplot as plt
+from datetime import datetime\ nimport matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -117,7 +116,11 @@ def plot_score(df):
     fig, ax = plt.subplots(facecolor=BG_COLOR)
     ax.set_facecolor(BG_COLOR)
     ax.plot(df['Date'], df['Score'], marker='o', color=THEME_COLOR)
-    ax.set_xlim(df['Date'].min(), df['Date'].max())
+    if not df.empty:
+        start = df['Date'].min() - pd.Timedelta(days=1)
+        end = df['Date'].max() + pd.Timedelta(days=1)
+        ax.set_xlim(start, end)
+    ax.set_ylim(0, 100)
     locator = mdates.DayLocator()
     formatter = mdates.DateFormatter('%b %d')
     ax.xaxis.set_major_locator(locator)
@@ -151,17 +154,21 @@ with cols[0]:
     with st.form('daily_form'):
         entry = {t: st.checkbox(f"{t} ({tasks[t]['weight']}%)") for t in task_names}
         if st.form_submit_button('✅ Submit Day'):
-            score = sum(tasks[t]['weight'] for t, done in entry.items() if done)
             date = datetime.now().strftime('%Y-%m-%d')
-            row = [date] + [int(entry[t]) for t in task_names] + [score]
-            sheet.append_row(row)
-            df_all.loc[len(df_all)] = row
-            new = check_achievements(score, achievements, df_all)
-            save_achievements(achievements)
-            st.success(f"Your Score: {score}%")
-            if new:
-                st.balloons()
-                st.info("Unlocked:\n" + "\n".join(new.keys()))
+            # Prevent multiple entries per day
+            if date in df_all['Date'].astype(str).tolist():
+                st.warning("You've already submitted your perfect day today.")
+            else:
+                score = sum(tasks[t]['weight'] for t, done in entry.items() if done)
+                row = [date] + [int(entry[t]) for t in task_names] + [score]
+                sheet.append_row(row)
+                df_all.loc[len(df_all)] = row
+                new = check_achievements(score, achievements, df_all)
+                save_achievements(achievements)
+                st.success(f"Your Score: {score}%")
+                if new:
+                    st.balloons()
+                    st.info("Unlocked:\n" + "\n".join(new.keys()))
 
     streak = get_current_streak(df_all)
     st.markdown(

@@ -125,6 +125,14 @@ with cols[0]:
     cs = meta.cell(2,1).value or '0'
     st.markdown(f"<p style='font-size:24px;color:{THEME_COLOR}'>🔥 Current Streak: {cs} day{'s' if cs!='1' else ''}</p>", unsafe_allow_html=True)
     st.subheader('🏆 Achievements')
-    for rec in ach_ws.get_all_records(): st.write(f"✅ {rec['Achievement']} ({rec['Unlocked']})")
+    all_achievements = ['First 50%', 'First 100%', 'Three Days Streak']
+    unlocked = {rec['Achievement'] for rec in ach_ws.get_all_records() if 'Achievement' in rec and 'Unlocked' in rec}
+    for ach in all_achievements:
+        if ach in unlocked:
+            date = next((rec['Unlocked'] for rec in ach_ws.get_all_records() if rec.get('Achievement') == ach), '')
+            st.write(f"✅ {ach} ({date})")
+        else:
+            st.write(f"❌ {ach}")
+
 with cols[1]:
     if not df_all.empty: st.subheader('📈 Score Over Time'); st.pyplot(plot_score(df_all))

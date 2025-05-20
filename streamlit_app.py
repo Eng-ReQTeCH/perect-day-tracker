@@ -11,7 +11,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ---- Configuration ----
 SHEET_NAME = "Perfect Day Log"
 META_SHEET_NAME = "Meta"
-ACH_SHEET_NAME = "Achievements"
 OBJ_SHEET_NAME = "Objectives"
 THEME_COLOR = "#1DB954"
 BG_COLOR = '#121212'
@@ -53,12 +52,11 @@ def load_sheets():
     df = pd.DataFrame(sheet.get_all_records())
     if df.empty or 'Date' not in df.columns:
         df = pd.DataFrame(columns=headers)
-    # Meta and Achievements
+    # Meta sheet
     meta = ensure_ws(spreadsheet, META_SHEET_NAME, ['Streak'])
-    ach_ws = ensure_ws(spreadsheet, ACH_SHEET_NAME, ['Achievement', 'Unlocked'])
-    return tasks, df, sheet, meta, ach_ws
+    return tasks, df, sheet, meta
 
-# ---- Streak & Achievements ----
+# ---- Streak ----
 def has_n_day_streak(df, n):
     df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
     dates = set(df['Date'].dt.normalize().dropna())
@@ -74,16 +72,6 @@ def get_current_streak(df):
         if today - pd.Timedelta(days=i) == d: streak += 1
         else: break
     return streak
-
-def check_achievements(score, df, ach_ws):
-    existing_records = ach_ws.get_all_records()
-    existing = {r.get('Achievement') for r in existing_records if 'Achievement' in r}
-    new = []
-    for name, cond in [('First 50%', score >= 50), ('First 100%', score == 100), ('Three Days Streak', has_n_day_streak(df, 3))]:
-        if cond and name not in existing:
-            ach_ws.append_row([name, datetime.now().strftime('%Y-%m-%d')])
-            new.append(name)
-    return new
 
 # ---- Plotting ----
 def plot_score(df):
@@ -105,7 +93,7 @@ st.set_page_config(page_title='Perfect Day Tracker', layout='wide')
 st.markdown(f"<style>body{{background-color:{BG_COLOR};color:{TEXT_COLOR}}}</style>", unsafe_allow_html=True)
 st.title('🌟 My Perfect Day Tracker')
 
-tasks, df_all, sheet, meta, ach_ws = load_sheets()
+tasks, df_all, sheet, meta = load_sheets()
 names = list(tasks.keys())
 cols = st.columns([1,2], gap='large')
 with cols[0]:
@@ -120,20 +108,9 @@ with cols[0]:
             sheet.clear(); sheet.append_row(['Date']+names+['Score']); sheet.append_rows(df_all.values.tolist())
             streak = get_current_streak(df_all)
             meta.clear(); meta.append_row(['Streak']); meta.append_row([streak])
-            new = check_achievements(row[-1], df_all, ach_ws)
-            if new: st.balloons(); st.info('Unlocked:\n'+"\n".join(new))
             st.success(f"Your Score: {row[-1]}%")
     cs = meta.cell(2,1).value or '0'
     st.markdown(f"<p style='font-size:24px;color:{THEME_COLOR}'>🔥 Current Streak: {cs} day{'s' if cs!='1' else ''}</p>", unsafe_allow_html=True)
-    st.subheader('🏆 Achievements')
-    all_achievements = ['First 50%', 'First 100%', 'Three Days Streak']
-    ach_records = ach_ws.get_all_records()
-unlocked = {rec['Achievement']: rec['Unlocked'] for rec in ach_records if 'Achievement' in rec and 'Unlocked' in rec}
-for ach in all_achievements:
-        if ach in unlocked:
-            st.write(f"✅ {ach} ({unlocked[ach]})")
-        else:
-            st.write(f"❌ {ach}")
 
 with cols[1]:
     if not df_all.empty: st.subheader('📈 Score Over Time'); st.pyplot(plot_score(df_all))

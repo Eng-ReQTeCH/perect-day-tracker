@@ -33,9 +33,13 @@ def load_sheet(task_names):
         sheet = client.create(SHEET_NAME).sheet1
         # add header row on new sheet
         sheet.append_row(['Date'] + task_names + ['Score'])
-    records = sheet.get_all_records()
+    # Safely fetch records
+    try:
+        records = sheet.get_all_records()
+    except Exception:
+        records = []
     df = pd.DataFrame(records)
-    # if empty or missing columns, ensure structure
+    # Ensure structure
     if df.empty or 'Date' not in df.columns:
         df = pd.DataFrame(columns=['Date'] + task_names + ['Score'])
     return df, sheet
@@ -61,11 +65,13 @@ def load_tasks():
             'Sleep Hygiene': {'weight': 5,  'color': '#607D8B'}
         }
 
+
 def load_achievements():
     if os.path.exists(ACHIEVEMENTS_FILE):
         with open(ACHIEVEMENTS_FILE, 'r') as f:
             return json.load(f)
     return {}
+
 
 def save_achievements(achievements):
     with open(ACHIEVEMENTS_FILE, 'w') as f:
@@ -81,6 +87,7 @@ def has_n_day_streak(df, n, min_score=1):
     days = set(today - pd.Timedelta(days=i) for i in range(n))
     good = set(daily[daily.Score >= min_score].Date.dt.normalize())
     return days.issubset(good)
+
 
 def get_current_streak(df, min_score=1):
     if df.empty:
@@ -136,8 +143,8 @@ st.markdown(f"<style>body{{background-color:{BG_COLOR};color:{TEXT_COLOR}}}</sty
 st.title("🌟 My Perfect Day Tracker")
 
 # Load tasks
-tasks = load_tasks()
-task_names = list(tasks.keys())
+ tasks = load_tasks()
+ task_names = list(tasks.keys())
 
 # Load sheet
 df_all, sheet = load_sheet(task_names)
@@ -155,7 +162,6 @@ with cols[0]:
             date = datetime.now().strftime('%Y-%m-%d')
             row = [date] + [int(entry[t]) for t in task_names] + [score]
             sheet.append_row(row)
-            # Use .loc instead of deprecated append
             df_all.loc[len(df_all)] = row
             new = check_achievements(score, achievements, df_all)
             save_achievements(achievements)

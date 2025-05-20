@@ -76,7 +76,7 @@ def get_current_streak(df):
     return streak
 
 def check_achievements(score, df, ach_ws):
-    existing = [r['Achievement'] for r in ach_ws.get_all_records()]
+    existing = [r.get('Achievement') for r in ach_ws.get_all_records() if 'Achievement' in r]
     new = []
     for name, cond in [('First 50%', score>=50), ('First 100%', score==100), ('Three Days Streak', has_n_day_streak(df,3))]:
         if cond and name not in existing:

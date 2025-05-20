@@ -35,7 +35,7 @@ def ensure_ws(spreadsheet, title, headers):
     return ws
 
 # ---- Load Sheets ----
-def load_sheets():():
+def load_sheets():
     client = get_gsheet_client()
     try:
         spreadsheet = client.open(SHEET_NAME)

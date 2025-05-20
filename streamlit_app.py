@@ -32,7 +32,6 @@ def load_meta_sheet(client):
     except Exception:
         spreadsheet = client.open(SHEET_NAME)
         meta = spreadsheet.add_worksheet(title=META_SHEET_NAME, rows=10, cols=2)
-        # initialize headers safely
         try:
             meta.update_cell(1, 1, 'Streak')
             meta.update_cell(2, 1, 0)
@@ -43,7 +42,6 @@ def load_meta_sheet(client):
 # ---- Load Data Sheet ----
 def load_sheet(task_names):
     client = get_gsheet_client()
-    spreadsheet = None
     try:
         spreadsheet = client.open(SHEET_NAME)
         sheet = spreadsheet.sheet1
@@ -176,11 +174,12 @@ with cols[0]:
             date = datetime.now().strftime('%Y-%m-%d')
             score = sum(tasks[t]['weight'] for t, done in entry.items() if done)
             row = [date] + [int(entry[t]) for t in task_names] + [score]
-            # replace or append
             existing_dates = df_all['Date'].astype(str).tolist()
             if date in existing_dates:
                 idx = existing_dates.index(date)
-                sheet.update(f'A{idx+2}:{chr(65+len(task_names))}{idx+2}', [row])
+                # update score row via update_cell per column
+                for col_idx, val in enumerate(row, start=1):
+                    meta_sheet.update_cell(idx+2, col_idx, val)
                 df_all.loc[idx] = row
             else:
                 sheet.append_row(row)
@@ -188,13 +187,12 @@ with cols[0]:
             new = check_achievements(score, achievements, df_all)
             save_achievements(achievements)
             streak = get_current_streak(df_all)
-            meta_sheet.update('A2', streak)
+            meta_sheet.update_cell(2, 1, streak)
             st.success(f"Your Score: {score}%")
             if new:
                 st.balloons()
                 st.info("Unlocked:\n" + "\n".join(new.keys()))
 
-        # Load displayed streak from meta sheet (safe integer conversion)
     displayed_raw = meta_sheet.acell('A2').value
     try:
         streak_val = int(displayed_raw)
@@ -205,7 +203,7 @@ with cols[0]:
         f"🔥 Current Streak: {streak_val} day{'s' if streak_val != 1 else ''}</p>",
         unsafe_allow_html=True
     )
-    st.subheader('🏆 Achievements' )
+    st.subheader('🏆 Achievements')
     for k in ['First 50%', 'First 100%', 'Three Days Streak']:
         st.write(f"{'✅' if achievements.get(k) else '❌'} {k}")
 
